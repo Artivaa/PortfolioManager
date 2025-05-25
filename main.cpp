@@ -8,6 +8,8 @@
 #include <fstream>
 #include <numeric>
 #include <random>
+#include <cmath> // Для std::round
+#include <imgui_internal.h>
 
 struct Asset {
     std::string name;
@@ -39,6 +41,7 @@ private:
     float quantity = 0.0f;
     float price = 0.0f;
     float extraCapital = 0.0f;
+    bool firstFrame = true; // Для инициализации DockSpace один раз
 
     float getTotalValue() const {
         return std::accumulate(assets.begin(), assets.end(), 0.0f,
@@ -100,7 +103,7 @@ private:
                 float current_value = it->value();
                 float target_value = total_value * (target.targetPercent / 100.0f);
                 float diff = target_value - current_value;
-                float units = diff / it->price;
+                float units = std::round(diff / it->price);
 
                 actions.push_back({ it->name, current_value, target_value, diff, units });
                 extraCapital += diff;
@@ -153,13 +156,63 @@ public:
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 130");
 
+        // Включаем поддержку DockSpace
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
-            // Панель 1: Ввод активов
+            // Создаем DockSpace
+            ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(viewport->Pos);
+            ImGui::SetNextWindowSize(viewport->Size);
+            ImGui::SetNextWindowViewport(viewport->ID);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+            ImGui::Begin("DockSpace Window", nullptr,
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
+
+            ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
+            // Настройка начальной компоновки (выполняется один раз)
+            if (firstFrame) {
+                firstFrame = false;
+
+                ImGui::DockBuilderRemoveNode(dockspace_id); // Очищаем предыдущую компоновку
+                ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+
+                ImGuiID dock_main_id = dockspace_id;
+                ImGuiID dock_left_id, dock_right_id;
+                ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Left, 0.4f, &dock_left_id, &dock_right_id);
+
+                ImGuiID dock_left_up_id, dock_left_down_id;
+                ImGui::DockBuilderSplitNode(dock_left_id, ImGuiDir_Up, 0.5f, &dock_left_up_id, &dock_left_down_id);
+
+                ImGuiID dock_right_up_id, dock_right_down_id;
+                ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Up, 0.5f, &dock_right_up_id, &dock_right_down_id);
+
+                ImGui::DockBuilderDockWindow("Asset Input", dock_left_up_id);
+                ImGui::DockBuilderDockWindow("Target Allocations", dock_left_down_id);
+                ImGui::DockBuilderDockWindow("Portfolio Breakdown", dock_right_up_id);
+                ImGui::DockBuilderDockWindow("Rebalance Results", dock_right_down_id);
+
+                ImGui::DockBuilderFinish(dockspace_id);
+            }
+
+            ImGui::End();
+            ImGui::PopStyleVar(3);
+
+            // Панель 1: Asset Input
             ImGui::Begin("Asset Input");
             ImGui::InputText("Name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
             ImGui::InputFloat("Quantity", &quantity, 0.1f, 1.0f, "%.2f");
@@ -198,13 +251,9 @@ public:
             if (ImGui::Button("Save Portfolio")) savePortfolio();
             ImGui::End();
 
-            // Панель 2: Диаграмма и текущие доли
-            ImGui::Begin("Portfolio Breakdown", nullptr, ImGuiWindowFlags_NoSavedSettings);
-            ImGui::SetWindowSize(ImVec2(400, 400), ImGuiCond_FirstUseEver);
-            drawPieChart();
-
-            ImGui::Dummy(ImVec2(0.0f, 10.0f));
-
+            // Панель 2: Portfolio Breakdown
+            ImGui::Begin("Portfolio Breakdown");
+            // Таблица слева
             ImGui::Text("Asset Shares:");
             if (ImGui::BeginTable("SharesTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 120.0f);
@@ -222,9 +271,14 @@ public:
                 }
                 ImGui::EndTable();
             }
+            // Диаграмма правее таблицы
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 200); // Сдвиг вправо
+            drawPieChart();
+
             ImGui::End();
 
-            // Панель 3: Ввод целевых долей
+            // Панель 3: Target Allocations
             ImGui::Begin("Target Allocations");
             for (auto& target : targets) {
                 ImGui::InputFloat(target.name.c_str(), &target.targetPercent, 0.1f, 1.0f, "%.2f");
@@ -238,7 +292,7 @@ public:
             }
             ImGui::End();
 
-            // Панель 4: Результаты ребалансировки
+            // Панель 4: Rebalance Results
             ImGui::Begin("Rebalance Results");
             if (ImGui::BeginTable("RebalanceTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
                 ImGui::TableSetupColumn("Name");
@@ -250,13 +304,13 @@ public:
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0); ImGui::Text("%s", action.name.c_str());
                     ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f", action.diffValue);
-                    ImGui::TableSetColumnIndex(2); ImGui::Text("%.2f", action.unitsToBuyOrSell);
+                    ImGui::TableSetColumnIndex(2); ImGui::Text("%d", static_cast<int>(action.unitsToBuyOrSell));
                     ImGui::TableSetColumnIndex(3); ImGui::Text(action.unitsToBuyOrSell >= 0 ? "Buy" : "Sell");
                     if (action.unitsToBuyOrSell < 0) {
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(255, 100, 100, 255));
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(150, 150, 150, 255));
                     }
                     else if (action.unitsToBuyOrSell > 0) {
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(100, 255, 100, 255));
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(150, 120, 90, 255));
                     }
                 }
                 ImGui::EndTable();
