@@ -271,9 +271,7 @@ public:
                 }
                 ImGui::EndTable();
             }
-            // Диаграмма правее таблицы
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 200); // Сдвиг вправо
+           
             drawPieChart();
 
             ImGui::End();
