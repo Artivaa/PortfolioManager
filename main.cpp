@@ -53,7 +53,7 @@ private:
         std::ofstream file("portfolio.json");
         file << j.dump(4);
     }
-
+   
 public:
     void run() {
         // Инициализация GLFW
@@ -84,7 +84,33 @@ public:
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
-            // Интерфейс будет реализован в следующих шагах
+            ImGui::Begin("Asset Input");
+            ImGui::InputText("Name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
+            ImGui::InputFloat("Quantity", &quantity, 0.1f, 1.0f, "%.2f");
+            ImGui::InputFloat("Price", &price, 0.1f, 1.0f, "%.2f");
+            if (ImGui::Button("Add Asset") && nameBuffer[0] && quantity > 0 && price > 0) {
+                assets.push_back({ nameBuffer, quantity, price });
+                targets.push_back({ nameBuffer, 0.0f });
+                nameBuffer[0] = '\0';
+                quantity = price = 0.0f;
+            }
+
+            ImGui::Text("Current Assets:");
+            if (ImGui::BeginTable("AssetsTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                ImGui::TableSetupColumn("Name");
+                ImGui::TableSetupColumn("Quantity");
+                ImGui::TableSetupColumn("Value");
+                ImGui::TableHeadersRow();
+                for (const auto& asset : assets) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0); ImGui::Text("%s", asset.name.c_str());
+                    ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f", asset.quantity);
+                    ImGui::TableSetColumnIndex(2); ImGui::Text("%.2f", asset.value());
+                }
+                ImGui::EndTable();
+            }
+            if (ImGui::Button("Save Portfolio")) savePortfolio();
+            ImGui::End();
 
             ImGui::Render();
             int display_w, display_h;
