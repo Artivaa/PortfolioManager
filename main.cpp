@@ -114,7 +114,8 @@ private:
     }
 
     void savePortfolio() {
-        const char* filePath = tinyfd_saveFileDialog("Сохранить портфель", "", 0, nullptr, nullptr);
+        const char* filterPatterns[] = { "*.json" };
+        const char* filePath = tinyfd_saveFileDialog("Сохранить портфель", "", 1, filterPatterns, "JSON files");
         if (filePath) {
             nlohmann::json j;
             for (const auto& asset : assets) {
@@ -126,7 +127,8 @@ private:
     }
 
     void loadPortfolio() {
-        const char* filePath = tinyfd_openFileDialog("Загрузить портфель", "", 0, nullptr, nullptr, 0);
+        const char* filterPatterns[] = { "*.json" };
+        const char* filePath = tinyfd_openFileDialog("Загрузить портфель", "", 1, filterPatterns, "JSON files", 0);
         if (filePath) {
             std::ifstream file(filePath);
             if (file.is_open()) {
