@@ -38,7 +38,6 @@ class PortfolioApp {
 private:
     std::vector<Asset> assets;
     std::vector<TargetAllocation> targets;
-    std::vector<TargetAllocation> previousTargets;
     std::vector<RebalanceAction> actions;
     std::vector<Asset> previousAssets;
     char nameBuffer[128] = "";
@@ -303,7 +302,6 @@ public:
                 if (target.targetPercent < 0.0f) target.targetPercent = 0.0f;
             }
             if (ImGui::Button(u8"Рассчитать")) {
-                previousTargets = targets;
                 calculateRebalance();
             }
             
