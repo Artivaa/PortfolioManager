@@ -6,7 +6,7 @@
 
 ### 📥 1. Скачайте проект
 
-- [Скачать релиз MyApp](https://github.com/user-attachments/files/20445053/MyApp.zip)
+- [Скачать SurceCode](https://github.com/Artivaa/PortfolioManager/archive/refs/tags/v1.0.zip)
 
 ### ⚙️ 2. Требования
 
