@@ -330,6 +330,7 @@ public:
                 ImGui::TableHeadersRow();
                 for (const auto& action : actions) {
                     ImGui::TableNextRow();
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0, 0, 0, 1));
                     ImGui::TableSetColumnIndex(0); ImGui::Text("%s", action.name.c_str());
                     ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f", action.diffValue);
                     ImGui::TableSetColumnIndex(2); ImGui::Text("%d", std::abs(action.unitsToBuyOrSell));
@@ -346,6 +347,7 @@ public:
                         ImGui::Text(u8"Удержать");
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(200, 200, 200, 255));
                     }
+                    ImGui::PopStyleColor();
                 }
                 ImGui::EndTable();
             }
