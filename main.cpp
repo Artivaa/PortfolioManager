@@ -17,7 +17,7 @@ struct Asset {
     std::string name;
     int quantity;
     float price;
-
+    ImU32 color;
     float value() const { return static_cast<float>(quantity) * price; }
 };
 
@@ -40,6 +40,7 @@ private:
     std::vector<TargetAllocation> targets;
     std::vector<TargetAllocation> previousTargets;
     std::vector<RebalanceAction> actions;
+    std::vector<Asset> previousAssets;
     char nameBuffer[128] = "";
     int quantity = 0;
     float price = 0.0f;
@@ -47,44 +48,52 @@ private:
     bool firstFrame = true;
     ImFont* robotoFont = nullptr;
 
+    ImU32 generateRandomColor() {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> hueDist(0.0f, 1.0f);
+        return ImColor::HSV(hueDist(gen), 0.8f, 0.8f);
+    }
+
     float getTotalValue() const {
         return std::accumulate(assets.begin(), assets.end(), 0.0f,
             [](float sum, const Asset& a) { return sum + a.value(); });
     }
 
-    void drawPieChart() {
-        ImDrawList* draw_list = ImGui::GetWindowDrawList();
-        ImVec2 center = ImGui::GetCursorScreenPos();
-        center.x += 150; center.y += 150;
-        float radius = 120.0f;
+    void drawBarChart() {
+        ImGui::Text(u8"Доли активов:");
+
         float total_value = getTotalValue();
-        float start_angle = 0.0f;
+        if (total_value <= 0.0f) return;
 
-        std::vector<ImU32> colors;
-        std::default_random_engine generator;
-        std::uniform_int_distribution<int> distribution(0, 255);
-        for (size_t i = 0; i < assets.size(); ++i) {
-            int r = distribution(generator);
-            int g = distribution(generator);
-            int b = distribution(generator);
-            colors.push_back(IM_COL32(r, g, b, 255));
+        ImVec2 graph_size = ImVec2(ImGui::GetContentRegionAvail().x, 150.0f);
+        ImVec2 cursor = ImGui::GetCursorScreenPos();
+
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddRectFilled(cursor, ImVec2(cursor.x + graph_size.x, cursor.y + graph_size.y), IM_COL32(50, 50, 50, 255));
+
+        float x_step = graph_size.x / assets.size();
+        float max_bar_height = graph_size.y * 0.8f;
+        float current_x = cursor.x;
+
+        for (const auto& asset : assets) {
+            float height = (asset.value() / total_value) * max_bar_height;
+            ImVec2 bar_start(current_x + 2.0f, cursor.y + graph_size.y - height);
+            ImVec2 bar_end(current_x + x_step - 2.0f, cursor.y + graph_size.y);
+
+            // Отрисовка столбца
+            draw_list->AddRectFilled(bar_start, bar_end, asset.color);
+
+            // Подпись названия актива
+            if (x_step > 30.0f) { // Показываем текст только если столбцы достаточно широкие
+                ImVec2 text_pos(current_x + 5.0f, cursor.y + graph_size.y - 20.0f);
+                draw_list->AddText(text_pos, IM_COL32(255, 255, 255, 255), asset.name.c_str());
+            }
+
+            current_x += x_step;
         }
 
-        for (size_t i = 0; i < assets.size(); ++i) {
-            if (total_value <= 0) continue;
-            float percentage = (assets[i].value() / total_value) * 2.0f * 3.14159f;
-            ImU32 color = colors[i];
-
-            draw_list->PathClear();
-            draw_list->PathArcTo(center, radius, start_angle, start_angle + percentage, 32);
-            draw_list->PathLineTo(center);
-            draw_list->PathFillConvex(color);
-            start_angle += percentage;
-
-            float mid_angle = start_angle - percentage / 2;
-            ImVec2 text_pos(center.x + cos(mid_angle) * radius * 0.6f, center.y + sin(mid_angle) * radius * 0.6f);
-            draw_list->AddText(text_pos, IM_COL32(0, 0, 0, 255), assets[i].name.c_str());
-        }
+        ImGui::Dummy(graph_size); // Сдвигаем курсор для последующих элементов
     }
 
     void calculateRebalance() {
@@ -137,7 +146,7 @@ private:
                 assets.clear();
                 targets.clear();
                 for (const auto& item : j["assets"]) {
-                    assets.push_back({ item["name"].get<std::string>(), item["quantity"].get<int>(), item["price"].get<float>() });
+                    assets.push_back({ item["name"].get<std::string>(), item["quantity"].get<int>(), item["price"].get<float>(), generateRandomColor() });
                     targets.push_back({ item["name"].get<std::string>(), 0.0f });
                 }
             }
@@ -232,7 +241,7 @@ public:
             ImGui::InputInt(u8"Количество", &quantity);
             ImGui::InputFloat(u8"Цена", &price, 0.1f, 1.0f, "%.2f");
             if (ImGui::Button(u8"Добавить актив") && nameBuffer[0] && quantity > 0 && price > 0) {
-                assets.push_back({ nameBuffer, quantity, price });
+                assets.push_back({ nameBuffer, quantity, price, generateRandomColor() });
                 targets.push_back({ nameBuffer, 0.0f });
                 nameBuffer[0] = '\0';
                 quantity = 0;
@@ -283,7 +292,7 @@ public:
                 }
                 ImGui::EndTable();
             }
-            drawPieChart();
+            drawBarChart();
             ImGui::End();
 
             // Панель 3: Target Allocations
@@ -309,9 +318,7 @@ public:
             else {
                 ImGui::Text(u8"Итого: 100%%");
             }
-            if (ImGui::Button(u8"Отменить изменения") && !previousTargets.empty()) {
-                targets = previousTargets;
-            }
+            
             
             ImGui::End();
 
@@ -346,6 +353,7 @@ public:
             }
             ImGui::Text(u8"Дополнительный капитал: %.2f", extraCapital);
             if (ImGui::Button(u8"Применить ребалансировку")) {
+                previousAssets = assets;
                 for (const auto& action : actions) {
                     auto it = std::find_if(assets.begin(), assets.end(),
                         [&](const Asset& a) { return a.name == action.name; });
@@ -355,6 +363,10 @@ public:
                     }
                 }
                 actions.clear();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(u8"Отменить изменения") && !previousAssets.empty()) {
+                assets = previousAssets; // Восстановление состояния
             }
             ImGui::End();
 
