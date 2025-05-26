@@ -11,6 +11,7 @@
 #include <cmath>
 #include <imgui_internal.h>
 #include "tinyfiledialogs.h"
+#include <windows.h>
 
 struct Asset {
     std::string name;
@@ -382,7 +383,12 @@ public:
     }
 };
 
-int main() {
+int WINAPI WinMain(
+    HINSTANCE hInstance,
+    HINSTANCE hPrevInstance,
+    LPSTR     lpCmdLine,
+    int       nCmdShow
+) {
     PortfolioApp app;
     app.run();
     return 0;

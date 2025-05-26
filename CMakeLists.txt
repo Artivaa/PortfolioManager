@@ -13,7 +13,7 @@ find_package(tinyfiledialogs CONFIG REQUIRED)
 
 # Добавляем исполняемый файл
 
-add_executable(PortfolioManager
+add_executable(PortfolioManager WIN32
     main.cpp
 
     # ImGui core
