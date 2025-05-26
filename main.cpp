@@ -10,8 +10,7 @@
 #include <random>
 #include <cmath>
 #include <imgui_internal.h>
-#include "tinyfiledialogs.h" 
-#include <iostream>
+#include "tinyfiledialogs.h"
 
 struct Asset {
     std::string name;
@@ -172,13 +171,8 @@ public:
                              0x0400, 0x04FF, 
                              0 };
         robotoFont = io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f, &fontConfig, ranges);
-        if (robotoFont == nullptr) {
-            std::cerr << "Не удалось загрузить шрифт Roboto Medium." << std::endl;
-        }
-        else {
-            io.FontDefault = robotoFont;
-        }
-
+        io.FontDefault = robotoFont;
+        
         ImGui::StyleColorsDark();
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 130");

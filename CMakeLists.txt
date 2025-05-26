@@ -12,6 +12,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(tinyfiledialogs CONFIG REQUIRED)
 
 # Добавляем исполняемый файл
+
 add_executable(PortfolioManager
     main.cpp
 
