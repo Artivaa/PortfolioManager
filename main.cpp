@@ -8,15 +8,17 @@
 #include <fstream>
 #include <numeric>
 #include <random>
-#include <cmath> // Для std::round
+#include <cmath>
 #include <imgui_internal.h>
+#include "tinyfiledialogs.h" 
+#include <iostream>
 
 struct Asset {
     std::string name;
-    float quantity;
+    int quantity;
     float price;
 
-    float value() const { return quantity * price; }
+    float value() const { return static_cast<float>(quantity) * price; }
 };
 
 struct TargetAllocation {
@@ -29,19 +31,21 @@ struct RebalanceAction {
     float currentValue;
     float targetValue;
     float diffValue;
-    float unitsToBuyOrSell;
+    int unitsToBuyOrSell;
 };
 
 class PortfolioApp {
 private:
     std::vector<Asset> assets;
     std::vector<TargetAllocation> targets;
+    std::vector<TargetAllocation> previousTargets;
     std::vector<RebalanceAction> actions;
     char nameBuffer[128] = "";
-    float quantity = 0.0f;
+    int quantity = 0;
     float price = 0.0f;
     float extraCapital = 0.0f;
-    bool firstFrame = true; // Для инициализации DockSpace один раз
+    bool firstFrame = true;
+    ImFont* robotoFont = nullptr;
 
     float getTotalValue() const {
         return std::accumulate(assets.begin(), assets.end(), 0.0f,
@@ -56,20 +60,20 @@ private:
         float total_value = getTotalValue();
         float start_angle = 0.0f;
 
-        static const ImU32 fixed_colors[] = {
-            IM_COL32(255, 99, 132, 255),   // Розовый
-            IM_COL32(54, 162, 235, 255),   // Голубой
-            IM_COL32(255, 206, 86, 255),   // Желтый
-            IM_COL32(75, 192, 192, 255),   // Бирюзовый
-            IM_COL32(153, 102, 255, 255)   // Фиолетовый
-        };
         std::vector<ImU32> colors;
+        std::default_random_engine generator;
+        std::uniform_int_distribution<int> distribution(0, 255);
+        for (size_t i = 0; i < assets.size(); ++i) {
+            int r = distribution(generator);
+            int g = distribution(generator);
+            int b = distribution(generator);
+            colors.push_back(IM_COL32(r, g, b, 255));
+        }
 
         for (size_t i = 0; i < assets.size(); ++i) {
             if (total_value <= 0) continue;
             float percentage = (assets[i].value() / total_value) * 2.0f * 3.14159f;
-            ImU32 color = fixed_colors[i % (sizeof(fixed_colors) / sizeof(fixed_colors[0]))];
-            colors.push_back(color);
+            ImU32 color = colors[i];
 
             draw_list->PathClear();
             draw_list->PathArcTo(center, radius, start_angle, start_angle + percentage, 32);
@@ -79,9 +83,7 @@ private:
 
             float mid_angle = start_angle - percentage / 2;
             ImVec2 text_pos(center.x + cos(mid_angle) * radius * 0.6f, center.y + sin(mid_angle) * radius * 0.6f);
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%.1f%%", (assets[i].value() / total_value) * 100.0f);
-            draw_list->AddText(text_pos, IM_COL32(255, 255, 255, 255), buf);
+            draw_list->AddText(text_pos, IM_COL32(0, 0, 0, 255), assets[i].name.c_str());
         }
     }
 
@@ -103,7 +105,7 @@ private:
                 float current_value = it->value();
                 float target_value = total_value * (target.targetPercent / 100.0f);
                 float diff = target_value - current_value;
-                float units = std::round(diff / it->price);
+                int units = static_cast<int>(std::round(diff / it->price));
 
                 actions.push_back({ it->name, current_value, target_value, diff, units });
                 extraCapital += diff;
@@ -112,52 +114,65 @@ private:
     }
 
     void savePortfolio() {
-        nlohmann::json j;
-        for (const auto& asset : assets) {
-            j["assets"].push_back({ {"name", asset.name}, {"quantity", asset.quantity}, {"price", asset.price} });
+        const char* filePath = tinyfd_saveFileDialog("Сохранить портфель", "", 0, nullptr, nullptr);
+        if (filePath) {
+            nlohmann::json j;
+            for (const auto& asset : assets) {
+                j["assets"].push_back({ {"name", asset.name}, {"quantity", asset.quantity}, {"price", asset.price} });
+            }
+            std::ofstream file(filePath);
+            file << j.dump(4);
         }
-        std::ofstream file("portfolio.json");
-        file << j.dump(4);
     }
 
     void loadPortfolio() {
-        std::ifstream file("portfolio.json");
-        if (file.is_open()) {
-            nlohmann::json j;
-            file >> j;
-            assets.clear();
-            targets.clear();
-            for (const auto& item : j["assets"]) {
-                assets.push_back({ item["name"].get<std::string>(),
-                                 item["quantity"].get<float>(),
-                                 item["price"].get<float>() });
-                targets.push_back({ item["name"].get<std::string>(), 0.0f });
+        const char* filePath = tinyfd_openFileDialog("Загрузить портфель", "", 0, nullptr, nullptr, 0);
+        if (filePath) {
+            std::ifstream file(filePath);
+            if (file.is_open()) {
+                nlohmann::json j;
+                file >> j;
+                assets.clear();
+                targets.clear();
+                for (const auto& item : j["assets"]) {
+                    assets.push_back({ item["name"].get<std::string>(), item["quantity"].get<int>(), item["price"].get<float>() });
+                    targets.push_back({ item["name"].get<std::string>(), 0.0f });
+                }
             }
         }
     }
 
 public:
     void run() {
-        if (!glfwInit()) {
-            return;
-        }
+        if (!glfwInit()) return;
 
-        GLFWwindow* window = glfwCreateWindow(1280, 720, "Portfolio Manager", nullptr, nullptr);
-        if (!window) {
-            glfwTerminate();
-            return;
-        }
+        GLFWwindow* window = glfwCreateWindow(1280, 720, u8"Менеджер Портфеля", nullptr, nullptr);
+        if (!window) { glfwTerminate(); return; }
         glfwMakeContextCurrent(window);
         glfwSwapInterval(1);
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+
+        
+        ImFontConfig fontConfig;
+        fontConfig.MergeMode = false; 
+        ImWchar ranges[] = { 0x0020, 0x00FF, 
+                             0x0400, 0x04FF, 
+                             0 };
+        robotoFont = io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", 16.0f, &fontConfig, ranges);
+        if (robotoFont == nullptr) {
+            std::cerr << "Не удалось загрузить шрифт Roboto Medium." << std::endl;
+        }
+        else {
+            io.FontDefault = robotoFont;
+        }
+
         ImGui::StyleColorsDark();
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 130");
 
-        // Включаем поддержку DockSpace
-        ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
         while (!glfwWindowShouldClose(window)) {
@@ -166,7 +181,6 @@ public:
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
-            // Создаем DockSpace
             ImGuiViewport* viewport = ImGui::GetMainViewport();
             ImGui::SetNextWindowPos(viewport->Pos);
             ImGui::SetNextWindowSize(viewport->Size);
@@ -183,11 +197,9 @@ public:
             ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
-            // Настройка начальной компоновки (выполняется один раз)
             if (firstFrame) {
                 firstFrame = false;
-
-                ImGui::DockBuilderRemoveNode(dockspace_id); // Очищаем предыдущую компоновку
+                ImGui::DockBuilderRemoveNode(dockspace_id);
                 ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
                 ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
 
@@ -201,10 +213,10 @@ public:
                 ImGuiID dock_right_up_id, dock_right_down_id;
                 ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Up, 0.5f, &dock_right_up_id, &dock_right_down_id);
 
-                ImGui::DockBuilderDockWindow("Asset Input", dock_left_up_id);
-                ImGui::DockBuilderDockWindow("Target Allocations", dock_left_down_id);
-                ImGui::DockBuilderDockWindow("Portfolio Breakdown", dock_right_up_id);
-                ImGui::DockBuilderDockWindow("Rebalance Results", dock_right_down_id);
+                ImGui::DockBuilderDockWindow(u8"Ввод активов", dock_left_up_id);
+                ImGui::DockBuilderDockWindow(u8"Целевая аллокация", dock_left_down_id);
+                ImGui::DockBuilderDockWindow(u8"Структура портфеля", dock_right_up_id);
+                ImGui::DockBuilderDockWindow(u8"Результаты ребалансировки", dock_right_down_id);
 
                 ImGui::DockBuilderFinish(dockspace_id);
             }
@@ -213,31 +225,31 @@ public:
             ImGui::PopStyleVar(3);
 
             // Панель 1: Asset Input
-            ImGui::Begin("Asset Input");
-            ImGui::InputText("Name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
-            ImGui::InputFloat("Quantity", &quantity, 0.1f, 1.0f, "%.2f");
-            ImGui::InputFloat("Price", &price, 0.1f, 1.0f, "%.2f");
-            if (ImGui::Button("Add Asset") && nameBuffer[0] && quantity > 0 && price > 0) {
+            ImGui::Begin(u8"Ввод активов");
+            ImGui::InputText(u8"Имя", nameBuffer, IM_ARRAYSIZE(nameBuffer));
+            ImGui::InputInt(u8"Количество", &quantity);
+            ImGui::InputFloat(u8"Цена", &price, 0.1f, 1.0f, "%.2f");
+            if (ImGui::Button(u8"Добавить актив") && nameBuffer[0] && quantity > 0 && price > 0) {
                 assets.push_back({ nameBuffer, quantity, price });
                 targets.push_back({ nameBuffer, 0.0f });
                 nameBuffer[0] = '\0';
-                quantity = price = 0.0f;
+                quantity = 0;
+                price = 0.0f;
             }
-
             ImGui::SameLine();
-            if (ImGui::Button("Load Portfolio")) loadPortfolio();
+            if (ImGui::Button(u8"Загрузить портфель")) loadPortfolio();
 
-            ImGui::Text("Current Assets:");
+            ImGui::Text(u8"Текущие активы");
             if (ImGui::BeginTable("AssetsTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-                ImGui::TableSetupColumn("Name");
-                ImGui::TableSetupColumn("Quantity");
-                ImGui::TableSetupColumn("Value");
-                ImGui::TableSetupColumn("Action");
+                ImGui::TableSetupColumn(u8"Имя");
+                ImGui::TableSetupColumn(u8"Количество");
+                ImGui::TableSetupColumn(u8"Цена");
+                ImGui::TableSetupColumn(u8"Действие");
                 ImGui::TableHeadersRow();
                 for (size_t i = 0; i < assets.size(); ++i) {
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0); ImGui::Text("%s", assets[i].name.c_str());
-                    ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f", assets[i].quantity);
+                    ImGui::TableSetColumnIndex(1); ImGui::Text("%d", assets[i].quantity);
                     ImGui::TableSetColumnIndex(2); ImGui::Text("%.2f", assets[i].value());
                     ImGui::TableSetColumnIndex(3);
                     if (ImGui::Button(("Delete##" + assets[i].name).c_str())) {
@@ -248,19 +260,17 @@ public:
                 }
                 ImGui::EndTable();
             }
-            if (ImGui::Button("Save Portfolio")) savePortfolio();
+            if (ImGui::Button(u8"Сохранить портфель")) savePortfolio();
             ImGui::End();
 
             // Панель 2: Portfolio Breakdown
-            ImGui::Begin("Portfolio Breakdown");
-            // Таблица слева
-            ImGui::Text("Asset Shares:");
-            if (ImGui::BeginTable("SharesTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-                ImGui::TableSetupColumn("Percentage", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+            ImGui::Begin(u8"Структура портфеля");
+            ImGui::Text(u8"Доли активов:");
+            if (ImGui::BeginTable("SharesTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                ImGui::TableSetupColumn(u8"Имя");
+                ImGui::TableSetupColumn(u8"Процент");
+                ImGui::TableSetupColumn(u8"Цена");
                 ImGui::TableHeadersRow();
-
                 float total_value = getTotalValue();
                 for (int i = 0; i < assets.size(); ++i) {
                     ImGui::TableNextRow();
@@ -271,49 +281,79 @@ public:
                 }
                 ImGui::EndTable();
             }
-           
             drawPieChart();
-
             ImGui::End();
 
             // Панель 3: Target Allocations
-            ImGui::Begin("Target Allocations");
+            ImGui::Begin(u8"Целевая аллокация");
+            
             for (auto& target : targets) {
                 ImGui::InputFloat(target.name.c_str(), &target.targetPercent, 0.1f, 1.0f, "%.2f");
                 if (target.targetPercent < 0.0f) target.targetPercent = 0.0f;
             }
-            if (ImGui::Button("Calculate Rebalance")) calculateRebalance();
+            if (ImGui::Button(u8"Рассчитать")) {
+                previousTargets = targets;
+                calculateRebalance();
+            }
+            
             float total_target_percent = std::accumulate(targets.begin(), targets.end(), 0.0f,
                 [](float sum, const TargetAllocation& t) { return sum + t.targetPercent; });
-            if (abs(total_target_percent - 100.0f) > 0.01f) {
-                ImGui::TextColored(ImVec4(1, 0, 0, 1), "Error: Target percentages must sum to 100%%!");
+            if (total_target_percent < 100.0f) {
+                ImGui::Text(u8"Осталось до 100%%: %.2f%%", 100.0f - total_target_percent);
             }
+            else if (total_target_percent > 100.0f) {
+                ImGui::TextColored(ImVec4(1, 0, 0, 1), u8"Превышение на: %.2f%%", total_target_percent - 100.0f);
+            }
+            else {
+                ImGui::Text(u8"Итого: 100%%");
+            }
+            if (ImGui::Button(u8"Отменить изменения") && !previousTargets.empty()) {
+                targets = previousTargets;
+            }
+            
             ImGui::End();
 
             // Панель 4: Rebalance Results
-            ImGui::Begin("Rebalance Results");
+            ImGui::Begin(u8"Результаты ребалансировки");
             if (ImGui::BeginTable("RebalanceTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-                ImGui::TableSetupColumn("Name");
-                ImGui::TableSetupColumn("Diff Value");
-                ImGui::TableSetupColumn("Units to Buy/Sell");
-                ImGui::TableSetupColumn("Action");
+                ImGui::TableSetupColumn(u8"Имя");
+                ImGui::TableSetupColumn(u8"Изменения");
+                ImGui::TableSetupColumn(u8"Кол-во Купить/Продать");
+                ImGui::TableSetupColumn(u8"Действие");
                 ImGui::TableHeadersRow();
                 for (const auto& action : actions) {
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0); ImGui::Text("%s", action.name.c_str());
                     ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f", action.diffValue);
-                    ImGui::TableSetColumnIndex(2); ImGui::Text("%d", static_cast<int>(action.unitsToBuyOrSell));
-                    ImGui::TableSetColumnIndex(3); ImGui::Text(action.unitsToBuyOrSell >= 0 ? "Buy" : "Sell");
-                    if (action.unitsToBuyOrSell < 0) {
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(150, 150, 150, 255));
+                    ImGui::TableSetColumnIndex(2); ImGui::Text("%d", std::abs(action.unitsToBuyOrSell));
+                    ImGui::TableSetColumnIndex(3);
+                    if (action.unitsToBuyOrSell > 0) {
+                        ImGui::Text(u8"Купить");
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(100, 255, 100, 255));
                     }
-                    else if (action.unitsToBuyOrSell > 0) {
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(150, 120, 90, 255));
+                    else if (action.unitsToBuyOrSell < 0) {
+                        ImGui::Text(u8"Продать");
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(255, 100, 100, 255));
+                    }
+                    else {
+                        ImGui::Text(u8"Удержать");
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(200, 200, 200, 255));
                     }
                 }
                 ImGui::EndTable();
             }
-            ImGui::Text("Extra Capital Needed: %.2f", extraCapital);
+            ImGui::Text(u8"Дополнительный капитал: %.2f", extraCapital);
+            if (ImGui::Button(u8"Применить ребалансировку")) {
+                for (const auto& action : actions) {
+                    auto it = std::find_if(assets.begin(), assets.end(),
+                        [&](const Asset& a) { return a.name == action.name; });
+                    if (it != assets.end()) {
+                        it->quantity += action.unitsToBuyOrSell;
+                        if (it->quantity < 0) it->quantity = 0;
+                    }
+                }
+                actions.clear();
+            }
             ImGui::End();
 
             ImGui::Render();

@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(tinyfiledialogs CONFIG REQUIRED)
 
 # Добавляем исполняемый файл
 add_executable(PortfolioManager
@@ -34,6 +35,13 @@ target_include_directories(PortfolioManager PRIVATE
 # Линкуем нужные библиотеки
 target_link_libraries(PortfolioManager PRIVATE
     glfw
+    tinyfiledialogs::tinyfiledialogs
     OpenGL::GL
     nlohmann_json::nlohmann_json
+)
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/fonts/Roboto-Medium.ttf
+    ${CMAKE_BINARY_DIR}/fonts/Roboto-Medium.ttf
+    COPYONLY
 )
