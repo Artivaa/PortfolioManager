@@ -5,8 +5,8 @@
 ## 🚀 Установка и сборка проекта
 
 ### 📥 1. Скачайте проект
-
-* [Скачать SourceCode](https://github.com/Artivaa/PortfolioManager/archive/refs/tags/v1.0.zip)
+* Само приложение доступно для скачивания на странице [Releases](https://github.com/Artivaa/PortfolioManager/releases)
+* Скачать [SourceCode](https://github.com/Artivaa/PortfolioManager/archive/refs/tags/v1.0.zip)
 
 ### ⚙️ 2. Требования
 
